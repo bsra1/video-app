@@ -11,21 +11,55 @@
 </head>
 <body>
   <h2>Simple-Peer Ekran ve Ses Paylaşımı</h2>
+
   <div>
     <button id="shareScreen">Ekranı Paylaş</button>
     <button id="shareCamera">Kamerayı Aç</button>
   </div>
+
+  <div>
+    <h3>Kullanıcılar</h3>
+    <ul id="userList"></ul>
+  </div>
+
   <div id="videos">
     <video id="localVideo" autoplay muted></video>
   </div>
 
   <script>
     const socket = io("https://video-app-lcl0.onrender.com");
+    const username = prompt("Adınızı girin:");
     const roomId = prompt("Oda ID girin:");
     const peers = {};
     let localStream;
+    let screenSharerId = null;
 
-    socket.emit("join-room", roomId);
+    socket.emit("join-room", { roomId, username });
+
+    socket.on("update-user-list", (users) => {
+      const userList = document.getElementById("userList");
+      userList.innerHTML = "";
+
+      users.forEach(user => {
+        const li = document.createElement("li");
+        li.textContent = user.name;
+        if (user.id === screenSharerId) {
+          li.style.fontWeight = "bold";
+          li.textContent += " (Ekran Paylaşıyor)";
+        }
+        userList.appendChild(li);
+      });
+    });
+
+    socket.on("screen-share-started", (userId) => {
+      screenSharerId = userId;
+      socket.emit("request-user-list-update");
+    });
+
+    socket.on("screen-share-stopped", () => {
+      screenSharerId = null;
+      socket.emit("request-user-list-update");
+    });
 
     socket.on("user-joined", (userId) => {
       const peer = createPeer(userId, true);
@@ -38,18 +72,6 @@
         peers[from] = peer;
       }
       peers[from].signal(signal);
-    });
-
-    socket.on("stop-screen-share", () => {
-      console.log("Başka biri ekran paylaşımı başlattı, kendi ekran paylaşımın durduruluyor.");
-      if (localStream) {
-        localStream.getTracks().forEach(track => {
-          if (track.kind === "video" && track.label.includes("screen")) {
-            track.stop();
-          }
-        });
-      }
-      socket.emit("stop-screen-share");
     });
 
     function createPeer(userId, initiator) {
@@ -92,7 +114,6 @@
       document.getElementById("localVideo").srcObject = localStream;
       replaceStreamsInPeers();
 
-      // Ekran paylaşımı sonlandığında server'a bildir
       screen.getVideoTracks()[0].addEventListener("ended", () => {
         socket.emit("stop-screen-share");
       });

@@ -8,25 +8,28 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: "*", // Yayına alırken sadece frontend domain ekle
+    origin: "*",
     methods: ["GET", "POST"]
   }
 });
 
 app.use(express.static(path.join(__dirname, "../client")));
 
-const rooms = {}; // roomId -> { screenSharer: socketId, users: [] }
+const rooms = {};
 
 io.on("connection", (socket) => {
   console.log("Kullanıcı bağlandı:", socket.id);
 
-  socket.on("join-room", (roomId) => {
+  socket.on("join-room", ({ roomId, username }) => {
     socket.join(roomId);
 
     if (!rooms[roomId]) {
       rooms[roomId] = { screenSharer: null, users: [] };
     }
-    rooms[roomId].users.push(socket.id);
+
+    rooms[roomId].users.push({ id: socket.id, name: username });
+
+    io.to(roomId).emit("update-user-list", rooms[roomId].users);
 
     socket.to(roomId).emit("user-joined", socket.id);
 
@@ -53,14 +56,22 @@ io.on("connection", (socket) => {
       });
     });
 
+    socket.on("request-user-list-update", () => {
+      if (rooms[roomId]) {
+        io.to(roomId).emit("update-user-list", rooms[roomId].users);
+      }
+    });
+
     socket.on("disconnect", () => {
       socket.to(roomId).emit("user-left", socket.id);
-      rooms[roomId].users = rooms[roomId].users.filter(id => id !== socket.id);
+      if (!rooms[roomId]) return;
 
+      rooms[roomId].users = rooms[roomId].users.filter(u => u.id !== socket.id);
       if (rooms[roomId].screenSharer === socket.id) {
         rooms[roomId].screenSharer = null;
         socket.to(roomId).emit("screen-share-stopped", socket.id);
       }
+      io.to(roomId).emit("update-user-list", rooms[roomId].users);
     });
   });
 });
