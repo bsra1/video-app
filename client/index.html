@@ -1,4 +1,3 @@
-<!-- client/index.html -->
 <!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -21,7 +20,7 @@
   </div>
 
   <script>
-const socket = io("https://video-app-lcl0.onrender.com");
+    const socket = io("https://video-app-lcl0.onrender.com");
     const roomId = prompt("Oda ID girin:");
     const peers = {};
     let localStream;
@@ -39,6 +38,18 @@ const socket = io("https://video-app-lcl0.onrender.com");
         peers[from] = peer;
       }
       peers[from].signal(signal);
+    });
+
+    socket.on("stop-screen-share", () => {
+      console.log("Başka biri ekran paylaşımı başlattı, kendi ekran paylaşımın durduruluyor.");
+      if (localStream) {
+        localStream.getTracks().forEach(track => {
+          if (track.kind === "video" && track.label.includes("screen")) {
+            track.stop();
+          }
+        });
+      }
+      socket.emit("stop-screen-share");
     });
 
     function createPeer(userId, initiator) {
@@ -69,6 +80,8 @@ const socket = io("https://video-app-lcl0.onrender.com");
     };
 
     document.getElementById("shareScreen").onclick = async () => {
+      socket.emit("start-screen-share");
+
       const screen = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
       const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
 
@@ -78,12 +91,17 @@ const socket = io("https://video-app-lcl0.onrender.com");
       ]);
       document.getElementById("localVideo").srcObject = localStream;
       replaceStreamsInPeers();
+
+      // Ekran paylaşımı sonlandığında server'a bildir
+      screen.getVideoTracks()[0].addEventListener("ended", () => {
+        socket.emit("stop-screen-share");
+      });
     };
 
     function replaceStreamsInPeers() {
       for (const peer of Object.values(peers)) {
-        localStream.getTracks().forEach((track) => {
-          const sender = peer._pc.getSenders().find((s) => s.track?.kind === track.kind);
+        localStream.getTracks().forEach(track => {
+          const sender = peer._pc.getSenders().find(s => s.track?.kind === track.kind);
           if (sender) sender.replaceTrack(track);
           else peer.addTrack(track, localStream);
         });
