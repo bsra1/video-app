@@ -1,0 +1,94 @@
+<!-- client/index.html -->
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Simple-Peer Video</title>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="https://unpkg.com/simple-peer@9.11.1/simplepeer.min.js"></script>
+  <style>
+    video { width: 300px; margin: 10px; border: 2px solid #333; }
+  </style>
+</head>
+<body>
+  <h2>Simple-Peer Ekran ve Ses Paylaşımı</h2>
+  <div>
+    <button id="shareScreen">Ekranı Paylaş</button>
+    <button id="shareCamera">Kamerayı Aç</button>
+  </div>
+  <div id="videos">
+    <video id="localVideo" autoplay muted></video>
+  </div>
+
+  <script>
+    const socket = io();
+    const roomId = prompt("Oda ID girin:");
+    const peers = {};
+    let localStream;
+
+    socket.emit("join-room", roomId);
+
+    socket.on("user-joined", (userId) => {
+      const peer = createPeer(userId, true);
+      peers[userId] = peer;
+    });
+
+    socket.on("signal", ({ from, signal }) => {
+      if (!peers[from]) {
+        const peer = createPeer(from, false);
+        peers[from] = peer;
+      }
+      peers[from].signal(signal);
+    });
+
+    function createPeer(userId, initiator) {
+      const peer = new SimplePeer({
+        initiator,
+        trickle: false,
+        stream: localStream,
+      });
+
+      peer.on("signal", (signal) => {
+        socket.emit("signal", { target: userId, signal });
+      });
+
+      peer.on("stream", (stream) => {
+        const video = document.createElement("video");
+        video.srcObject = stream;
+        video.autoplay = true;
+        document.getElementById("videos").appendChild(video);
+      });
+
+      return peer;
+    }
+
+    document.getElementById("shareCamera").onclick = async () => {
+      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      document.getElementById("localVideo").srcObject = localStream;
+      replaceStreamsInPeers();
+    };
+
+    document.getElementById("shareScreen").onclick = async () => {
+      const screen = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      localStream = new MediaStream([
+        ...screen.getVideoTracks(),
+        ...mic.getAudioTracks()
+      ]);
+      document.getElementById("localVideo").srcObject = localStream;
+      replaceStreamsInPeers();
+    };
+
+    function replaceStreamsInPeers() {
+      for (const peer of Object.values(peers)) {
+        localStream.getTracks().forEach((track) => {
+          const sender = peer._pc.getSenders().find((s) => s.track?.kind === track.kind);
+          if (sender) sender.replaceTrack(track);
+          else peer.addTrack(track, localStream);
+        });
+      }
+    }
+  </script>
+</body>
+</html>
