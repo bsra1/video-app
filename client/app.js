@@ -38,13 +38,11 @@ function initSocket() {
   socket.on("screen-share-started", (userIdStarted) => {
     screenSharerId = userIdStarted;
     updateUserList();
-    updateVideoStyles();
   });
 
   socket.on("screen-share-stopped", () => {
     screenSharerId = null;
     updateUserList();
-    updateVideoStyles();
     clearScreenShareVideo();
   });
 
@@ -88,10 +86,13 @@ function updateUserList(users) {
 }
 
 function createPeer(peerId, initiator) {
+  // Burada hangi stream'i gönderiyoruz? Öncelikle ekran varsa ekran, yoksa kamera
+  const streamToSend = (localScreenStream ? localScreenStream : localCameraStream) || null;
+
   const peer = new SimplePeer({
     initiator,
     trickle: false,
-    stream: localCameraStream || null,
+    stream: streamToSend,
   });
 
   peer.on("signal", (signal) => {
@@ -114,8 +115,10 @@ function handleIncomingStream(peerId, stream) {
   const videoTracks = stream.getVideoTracks();
   if (videoTracks.length === 0) return;
 
+  // Gelen stream ekran paylaşımı yapan kullanıcıdan mı?
   if (peerId === screenSharerId) {
     setScreenShareVideo(stream, peerId);
+    removeCameraVideo(peerId); // Aynı kişinin kamera videosu varsa kaldır
   } else {
     addCameraVideo(peerId, stream);
   }
@@ -139,11 +142,16 @@ function addCameraVideo(peerId, stream) {
     video.id = "cameraVideo-" + peerId;
     video.autoplay = true;
     video.playsInline = true;
-    video.muted = (peerId === userId);
+    video.muted = (peerId === userId); // Kendi kamerasıysa sessizle
     video.title = getUserNameById(peerId);
     document.getElementById("cameraVideos").appendChild(video);
   }
   video.srcObject = stream;
+}
+
+function removeCameraVideo(peerId) {
+  const video = document.getElementById("cameraVideo-" + peerId);
+  if (video) video.remove();
 }
 
 function removePeer(peerId) {
@@ -151,8 +159,7 @@ function removePeer(peerId) {
     peers[peerId].destroy();
     delete peers[peerId];
   }
-  let camVideo = document.getElementById("cameraVideo-" + peerId);
-  if (camVideo) camVideo.remove();
+  removeCameraVideo(peerId);
 
   if (peerId === screenSharerId) {
     clearScreenShareVideo();
@@ -168,8 +175,10 @@ function getUserNameById(id) {
   return user ? user.name : "Bilinmeyen";
 }
 
+// Kamera açma butonu
 document.getElementById("shareCamera").onclick = async () => {
   try {
+    // Önce varsa önceki kamera stream'ini kapat
     if(localCameraStream) {
       localCameraStream.getTracks().forEach(t => t.stop());
       localCameraStream = null;
@@ -183,11 +192,10 @@ document.getElementById("shareCamera").onclick = async () => {
   }
 };
 
+// Ekran paylaşımı kutusuna tıklayınca fullscreen aç/kapa (Ekran paylaşımı yapan sadece diğerleri açabilir)
 document.getElementById("screenShareContainer").onclick = () => {
-
-    if(screenSharerId === userId) {
-    // İstersen uyarı koyabilirsin, yoksa hiçbir şey yapma
-    // alert("Ekran paylaşımı yapan kullanıcı fullscreen yapamaz.");
+  if(screenSharerId === userId) {
+    // Ekran paylaşımı yapan kullanıcı fullscreen açmasın
     return;
   }
   const video = document.getElementById("screenShareVideo");
@@ -198,18 +206,22 @@ document.getElementById("screenShareContainer").onclick = () => {
   }
 };
 
+// Ekran paylaşımı başlat/durdur
 document.getElementById("shareScreen").onclick = async () => {
   try {
+    // Başkası ekran paylaşıyorsa önce durdurması için istek gönder
     if(screenSharerId && screenSharerId !== userId) {
-      socket.emit("stop-screen-share-request", { userId: screenSharerId });
+      socket.emit("stop-screen-share-request", screenSharerId);
       await new Promise(res => setTimeout(res, 1000));
     }
 
+    // Eğer zaten ekran paylaşıyorsan durdur
     if(screenSharerId === userId) {
       stopScreenSharing();
       return;
     }
 
+    // Ekran paylaşımı başlat
     socket.emit("start-screen-share");
 
     localScreenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
@@ -266,16 +278,16 @@ function replaceCameraStreamInPeers(newStream) {
   }
 }
 
+// Kamera videolarına tıklanınca fullscreen aç/kapa
 document.getElementById("cameraVideos").addEventListener("click", e => {
   if (e.target.tagName === "VIDEO") {
     const video = e.target;
-      const container = video.parentElement; // video kapsayıcısı
- if (!document.fullscreenElement) {
-    container.requestFullscreen();
-    video.classList.add("fullscreen");
-  } else {
-    document.exitFullscreen();
-    video.classList.remove("fullscreen");
-  }
+    if (!document.fullscreenElement) {
+      video.requestFullscreen();
+      video.classList.add("fullscreen");
+    } else {
+      document.exitFullscreen();
+      video.classList.remove("fullscreen");
+    }
   }
 });
