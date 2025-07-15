@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8" />
-  <title>Video & Ekran Paylaşımı Ayrı Kutular</title>
+  <title>Teams Benzeri Video & Ekran Paylaşımı</title>
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script src="https://unpkg.com/simple-peer@9.11.1/simplepeer.min.js"></script>
@@ -19,22 +19,20 @@
   </div>
 
   <div id="mainContent" style="display:none;">
-    <div id="controls">
-      <button id="shareScreen" title="Ekranı Paylaş">Ekranı Paylaş</button>
-      <button id="shareCamera" title="Kamerayı Aç">Kamerayı Aç</button>
+    <div id="userListContainer">
+      <h3>Kullanıcılar</h3>
+      <ul id="userList"></ul>
     </div>
-
     <div id="layout">
+      <div id="controls">
+        <button id="shareScreen" title="Ekranı Paylaş">Ekranı Paylaş</button>
+        <button id="shareCamera" title="Kamerayı Aç">Kamerayı Aç</button>
+      </div>
       <div id="leftSide">
         <div id="screenShareContainer" title="Ekran Paylaşımına Tıkla - Fullscreen Aç/Kapat">
           <video id="screenShareVideo" autoplay playsinline muted></video>
         </div>
         <div id="cameraVideos"></div>
-      </div>
-
-      <div id="userListContainer">
-        <h3>Kullanıcılar</h3>
-        <ul id="userList"></ul>
       </div>
     </div>
   </div>
