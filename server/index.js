@@ -37,9 +37,10 @@ io.on("connection", (socket) => {
       const currentSharer = rooms[roomId].screenSharer;
       if (currentSharer && currentSharer !== socket.id) {
         io.to(currentSharer).emit("stop-screen-share");
+        rooms[roomId].screenSharer = null;
       }
       rooms[roomId].screenSharer = socket.id;
-      socket.to(roomId).emit("screen-share-started", socket.id);
+      io.to(roomId).emit("screen-share-started", socket.id);
     });
 
     socket.on("stop-screen-share", () => {

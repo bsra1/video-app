@@ -132,6 +132,16 @@ body, html {
   padding: 10px;
   max-height: 300px;
   overflow-y: auto;
+  margin-top: 10px;
+}
+#cameraVideos:before {
+  content: "Kamera Videoları";
+  display: block;
+  color: #61dafb;
+  font-weight: 700;
+  margin-bottom: 8px;
+  font-size: 1.05rem;
+  text-align: left;
 }
 #cameraVideos video {
   width: 100%;

@@ -86,13 +86,12 @@ function updateUserList(users) {
 }
 
 function createPeer(peerId, initiator) {
-  // Burada hangi stream'i gönderiyoruz? Öncelikle ekran varsa ekran, yoksa kamera
-  const streamToSend = (localScreenStream ? localScreenStream : localCameraStream) || null;
-
+  // Kamera ve ekran stream'leri birbirinden bağımsız yönetilecek
+  // Kamera stream'i varsa ekle, ekran stream'i varsa ekle
   const peer = new SimplePeer({
     initiator,
     trickle: false,
-    stream: streamToSend,
+    stream: null, // Başlangıçta stream eklemiyoruz
   });
 
   peer.on("signal", (signal) => {
@@ -108,17 +107,32 @@ function createPeer(peerId, initiator) {
   });
 
   peers[peerId] = peer;
+
+  // Kamera stream'i varsa ekle
+  if (localCameraStream) {
+    localCameraStream.getTracks().forEach(track => {
+      peer.addTrack(track, localCameraStream);
+    });
+  }
+  // Ekran stream'i varsa ekle
+  if (localScreenStream) {
+    localScreenStream.getTracks().forEach(track => {
+      peer.addTrack(track, localScreenStream);
+    });
+  }
+
   return peer;
 }
 
+// Gelen stream'in türünü ayırt et
 function handleIncomingStream(peerId, stream) {
   const videoTracks = stream.getVideoTracks();
   if (videoTracks.length === 0) return;
 
-  // Gelen stream ekran paylaşımı yapan kullanıcıdan mı?
+  // Ekran paylaşımı yapan kullanıcıdan gelen stream ise üst kutuda göster
   if (peerId === screenSharerId) {
     setScreenShareVideo(stream, peerId);
-    removeCameraVideo(peerId); // Aynı kişinin kamera videosu varsa kaldır
+    // Kamera videolarını etkileme!
   } else {
     addCameraVideo(peerId, stream);
   }
@@ -186,7 +200,13 @@ document.getElementById("shareCamera").onclick = async () => {
 
     localCameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     addCameraVideo(userId, localCameraStream);
-    replaceCameraStreamInPeers(localCameraStream);
+
+    // Kamera stream'ini tüm peer'lara ekle
+    for (const peer of Object.values(peers)) {
+      localCameraStream.getTracks().forEach(track => {
+        peer.addTrack(track, localCameraStream);
+      });
+    }
   } catch (err) {
     alert("Kamera açılırken hata: " + err.message);
   }
@@ -224,6 +244,12 @@ document.getElementById("shareScreen").onclick = async () => {
     // Ekran paylaşımı başlat
     socket.emit("start-screen-share");
 
+    // Önceki ekran stream'ini durdur
+    if(localScreenStream) {
+      localScreenStream.getTracks().forEach(t => t.stop());
+      localScreenStream = null;
+    }
+
     localScreenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
     const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const combinedStream = new MediaStream([
@@ -232,7 +258,13 @@ document.getElementById("shareScreen").onclick = async () => {
     ]);
 
     setScreenShareVideo(combinedStream, userId);
-    replaceScreenStreamInPeers(combinedStream);
+
+    // Ekran stream'ini tüm peer'lara ekle
+    for (const peer of Object.values(peers)) {
+      combinedStream.getTracks().forEach(track => {
+        peer.addTrack(track, combinedStream);
+      });
+    }
 
     screenSharerId = userId;
     updateUserList();
@@ -254,28 +286,6 @@ function stopScreenSharing() {
   socket.emit("stop-screen-share");
   screenSharerId = null;
   updateUserList();
-}
-
-function replaceScreenStreamInPeers(newStream) {
-  for (const peer of Object.values(peers)) {
-    if(!peer._pc) continue;
-    newStream.getTracks().forEach(track => {
-      const sender = peer._pc.getSenders().find(s => s.track?.kind === track.kind);
-      if (sender) sender.replaceTrack(track);
-      else peer.addTrack(track, newStream);
-    });
-  }
-}
-
-function replaceCameraStreamInPeers(newStream) {
-  for (const peer of Object.values(peers)) {
-    if(!peer._pc) continue;
-    newStream.getTracks().forEach(track => {
-      const sender = peer._pc.getSenders().find(s => s.track?.kind === track.kind);
-      if (sender) sender.replaceTrack(track);
-      else peer.addTrack(track, newStream);
-    });
-  }
 }
 
 // Kamera videolarına tıklanınca fullscreen aç/kapa
